@@ -7,12 +7,13 @@ import backend.Song;
 import objects.HealthIcon;
 import objects.MusicPlayer;
 
-import options.GameplayChangersSubstate;
+import substates.GameplayChangersSubstate;
 import substates.ResetScoreSubState;
 
 import flixel.math.FlxMath;
 import flixel.util.FlxDestroyUtil;
 import haxe.Json;
+import lime.utils.Assets;
 
 class FreeplayState extends MusicBeatState
 {
@@ -62,19 +63,6 @@ class FreeplayState extends MusicBeatState
 		// Updating Discord Rich Presence
 		DiscordClient.changePresence("In the Menus", null);
 		#end
-
-		final accept:String = controls.mobileC ? "A" : "ACCEPT";
-		final reject:String = controls.mobileC ? "B" : "BACK";
-
-		if(WeekData.weeksList.length < 1)
-			{
-				FlxTransitionableState.skipNextTransIn = true;
-				persistentUpdate = false;
-				MusicBeatState.switchState(new states.ErrorState("NO WEEKS ADDED FOR FREEPLAY\n\nPress " + accept + " to go to the Week Editor Menu.\nPress " + reject + " to return to Main Menu.",
-					function() MusicBeatState.switchState(new states.editors.WeekEditorState()),
-					function() MusicBeatState.switchState(new states.MainMenuState())));
-				return;
-			}
 
 		for (i in 0...WeekData.weeksList.length)
 		{
@@ -175,13 +163,13 @@ class FreeplayState extends MusicBeatState
 		bottomBG.alpha = 0.6;
 		add(bottomBG);
 
-        var leText:String;
-        if (controls.mobileC)
-			leText = "Press X to listen to the Song / Press C to open the Gameplay Changers Menu / Press Y to Reset your Score and Accuracy.";
-        else
-			leText = "Press SPACE to listen to the Song / Press CTRL to open the Gameplay Changers Menu / Press RESET to Reset your Score and Accuracy.";
+                var leText:String;
 
-		var leText:String = Language.getPhrase("freeplay_tip", leText);
+                if (controls.mobileC) {
+		leText = "Press X to listen to the Song / Press C to open the Gameplay Changers Menu / Press Y to Reset your Score and Accuracy.";
+                } else {
+		leText = "Press SPACE to listen to the Song / Press CTRL to open the Gameplay Changers Menu / Press RESET to Reset your Score and Accuracy.";
+                }
 		bottomString = leText;
 		var size:Int = 16;
 		bottomText = new FlxText(bottomBG.x, bottomBG.y + 4, FlxG.width, leText, size);
@@ -195,7 +183,7 @@ class FreeplayState extends MusicBeatState
 		changeSelection();
 		updateTexts();
 
-		addTouchPad('LEFT_FULL', 'A_B_C_X_Y_Z');
+		addVirtualPad('LEFT_FULL', 'A_B_C_X_Y_Z');
 		super.create();
 	}
 
@@ -204,8 +192,8 @@ class FreeplayState extends MusicBeatState
 		changeSelection(0, false);
 		persistentUpdate = true;
 		super.closeSubState();
-		removeTouchPad();
-		addTouchPad('LEFT_FULL', 'A_B_C_X_Y_Z');
+		removeVirtualPad();
+		addVirtualPad('LEFT_FULL', 'A_B_C_X_Y_Z');
 	}
 
 	public function addSong(songName:String, weekNum:Int, songCharacter:String, color:Int)
@@ -227,9 +215,6 @@ class FreeplayState extends MusicBeatState
 	var stopMusicPlay:Bool = false;
 	override function update(elapsed:Float)
 	{
-		if(WeekData.weeksList.length < 1)
-			return;
-
 		if (FlxG.sound.music.volume < 0.7)
 			FlxG.sound.music.volume += 0.5 * FlxG.elapsed;
 
@@ -249,11 +234,11 @@ class FreeplayState extends MusicBeatState
 			ratingSplit[1] += '0';
 
 		var shiftMult:Int = 1;
-        if((FlxG.keys.pressed.SHIFT || touchPad.buttonZ.pressed) && !player.playingMusic) shiftMult = 3;
+        if((FlxG.keys.pressed.SHIFT || virtualPad.buttonZ.pressed) && !player.playingMusic) shiftMult = 3;
 
 		if (!player.playingMusic)
 		{
-			scoreText.text = Language.getPhrase('personal_best', 'PERSONAL BEST: {1} ({2}%)', [lerpScore, ratingSplit.join('.')]);
+			scoreText.text = 'PERSONAL BEST: ' + lerpScore + ' (' + ratingSplit.join('.') + '%)';
 			positionHighscore();
 			
 			if(songs.length > 1)
@@ -333,13 +318,13 @@ class FreeplayState extends MusicBeatState
 			}
 		}
 
-        if((FlxG.keys.justPressed.CONTROL || touchPad.buttonC.justPressed) && !player.playingMusic)
+        if((FlxG.keys.justPressed.CONTROL || virtualPad.buttonC.justPressed) && !player.playingMusic)
 		{
 			persistentUpdate = false;
 			openSubState(new GameplayChangersSubstate());
-			removeTouchPad();
+			removeVirtualPad();
 		}
-        else if(FlxG.keys.justPressed.SPACE || touchPad.buttonX.justPressed)
+        else if(FlxG.keys.justPressed.SPACE || virtualPad.buttonX.justPressed)
 		{
 			if(instPlaying != curSelected && !player.playingMusic)
 			{
@@ -348,7 +333,7 @@ class FreeplayState extends MusicBeatState
 
 				Mods.currentModDirectory = songs[curSelected].folder;
 				var poop:String = Highscore.formatSong(songs[curSelected].songName.toLowerCase(), curDifficulty);
-				Song.loadFromJson(poop, songs[curSelected].songName.toLowerCase());
+				PlayState.SONG = Song.loadFromJson(poop, songs[curSelected].songName.toLowerCase());
 				if (PlayState.SONG.needsVoices)
 				{
 					vocals = new FlxSound();
@@ -422,19 +407,18 @@ class FreeplayState extends MusicBeatState
 
 			try
 			{
-				Song.loadFromJson(poop, songLowercase);
+				PlayState.SONG = Song.loadFromJson(poop, songLowercase);
 				PlayState.isStoryMode = false;
 				PlayState.storyDifficulty = curDifficulty;
 
 				trace('CURRENT WEEK: ' + WeekData.getWeekFileName());
 			}
-			catch(e:haxe.Exception)
+			catch(e:Dynamic)
 			{
-				trace('ERROR! ${e.message}');
+				trace('ERROR! $e');
 
-				var errorStr:String = e.message;
-				if(errorStr.contains('There is no TEXT asset with an ID of')) errorStr = 'Missing file: ' + errorStr.substring(errorStr.indexOf(songLowercase), errorStr.length-1); //Missing chart
-				else errorStr += '\n\n' + e.stack;
+				var errorStr:String = e.toString();
+				if(errorStr.startsWith('[lime.utils.Assets] ERROR:')) errorStr = 'Missing file: ' + errorStr.substring(errorStr.indexOf(songLowercase), errorStr.length-1); //Missing chart
 
 				missingText.text = 'ERROR WHILE LOADING CHART:\n$errorStr';
 				missingText.screenCenter(Y);
@@ -449,7 +433,7 @@ class FreeplayState extends MusicBeatState
 
 			LoadingState.prepareToSong();
 			LoadingState.loadAndSwitchState(new PlayState());
-			#if !SHOW_LOADING_SCREEN FlxG.sound.music.stop(); #end
+			#if !LOADING_SCREEN_ALLOWED FlxG.sound.music.stop(); #end
 			stopMusicPlay = true;
 
 			destroyFreeplayVocals();
@@ -457,11 +441,11 @@ class FreeplayState extends MusicBeatState
 			DiscordClient.loadModRPC();
 			#end
 		}
-        else if((controls.RESET || touchPad.buttonY.justPressed) && !player.playingMusic)
+        else if((controls.RESET || virtualPad.buttonY.justPressed) && !player.playingMusic)
 		{
 			persistentUpdate = false;
 			openSubState(new ResetScoreSubState(songs[curSelected].songName, curDifficulty, songs[curSelected].songCharacter));
-			removeTouchPad();
+			removeVirtualPad();
 			FlxG.sound.play(Paths.sound('scrollMenu'));
 		}
 
@@ -473,15 +457,14 @@ class FreeplayState extends MusicBeatState
 	{
 		try
 		{
-			var path:String = Paths.getPath('characters/$char.json', TEXT);
+			var path:String = Paths.getPath('characters/$char.json', TEXT, null, true);
 			#if MODS_ALLOWED
 			var character:Dynamic = Json.parse(File.getContent(path));
 			#else
-			var character:Dynamic = Json.parse(openfl.Assets.getText(path));
+			var character:Dynamic = Json.parse(Assets.getText(path));
 			#end
 			return character.vocals_file;
 		}
-		catch (e:Dynamic) {}
 		return null;
 	}
 
@@ -504,12 +487,11 @@ class FreeplayState extends MusicBeatState
 		intendedRating = Highscore.getRating(songs[curSelected].songName, curDifficulty);
 		#end
 
-		lastDifficultyName = Difficulty.getString(curDifficulty, false);
-		var displayDiff:String = Difficulty.getString(curDifficulty);
+		lastDifficultyName = Difficulty.getString(curDifficulty);
 		if (Difficulty.list.length > 1)
-			diffText.text = '< ' + displayDiff.toUpperCase() + ' >';
+			diffText.text = '< ' + lastDifficultyName.toUpperCase() + ' >';
 		else
-			diffText.text = displayDiff.toUpperCase();
+			diffText.text = lastDifficultyName.toUpperCase();
 
 		positionHighscore();
 		missingText.visible = false;
@@ -565,7 +547,7 @@ class FreeplayState extends MusicBeatState
 	}
 
 	inline private function _updateSongLastDifficulty()
-		songs[curSelected].lastDifficulty = Difficulty.getString(curDifficulty, false);
+		songs[curSelected].lastDifficulty = Difficulty.getString(curDifficulty);
 
 	private function positionHighscore()
 	{
